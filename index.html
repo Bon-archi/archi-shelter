@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐾 ARCHI'S SHELTER</title>
+<link rel="stylesheet" href="styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- ═══════════ AUTH SCREEN ═══════════ -->
+<section id="authScreen" class="screen">
+  <div class="auth-card">
+    <div class="auth-logo">🐾</div>
+    <h1>ARCHI'S SHELTER</h1>
+    <p class="auth-tagline">מקלט החיות של ארצ'י</p>
+
+    <div id="authTabs" class="auth-tabs">
+      <button class="tab-btn active" data-tab="login">כניסה</button>
+      <button class="tab-btn" data-tab="signup">הרשמה</button>
+    </div>
+
+    <form id="authForm" class="auth-form" autocomplete="off">
+      <input type="text" id="authUser" placeholder="שם משתמש" required minlength="2" maxlength="20">
+      <input type="password" id="authPass" placeholder="סיסמה" required minlength="3">
+      <button type="submit" id="authSubmit" class="btn-primary">כניסה 🐾</button>
+      <p id="authError" class="error-msg"></p>
+    </form>
+
+    <div class="auth-mascot">
+      <div class="mascot-tip">היי! בואו לנהל את המקלט שלי 🥰</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ GAME SCREEN ═══════════ -->
+<section id="gameScreen" class="screen hidden">
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="stat-pill"><span class="stat-icon">💰</span><span id="money">1000</span></div>
+    <div class="stat-pill"><span class="stat-icon">📅</span>יום <span id="day">1</span></div>
+    <div class="stat-pill"><span class="stat-icon">⭐</span>רמה <span id="level">1</span></div>
+    <div class="stat-pill"><span class="stat-icon">❤️</span><span id="reputation">50</span></div>
+    <div class="day-progress">
+      <div class="phase-label" id="phaseLabel">🌅 בוקר</div>
+      <div class="progress-bar"><div class="progress-fill" id="dayProgress"></div></div>
+    </div>
+    <div class="topbar-actions">
+      <button id="speedBtn" class="icon-btn" title="מהירות">🐢</button>
+      <button id="pauseBtn" class="icon-btn" title="עצור">⏸️</button>
+      <button id="logoutBtn" class="icon-btn" title="התנתק">🚪</button>
+    </div>
+  </header>
+
+  <!-- Main play area -->
+  <main class="play-area">
+
+    <!-- Animals grid -->
+    <div class="animals-section">
+      <h2>🏠 המקלט - <span id="animalCount">0</span> חיות</h2>
+      <div id="animalsGrid" class="animals-grid"></div>
+    </div>
+
+    <!-- Visitors panel -->
+    <aside class="visitors-section">
+      <h2>👥 מבקרים <span id="visitorCount" class="badge">0</span></h2>
+      <div id="visitorsList" class="visitors-list">
+        <p class="empty-msg">אין מבקרים כרגע 🌸</p>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ARCHI mascot bubble -->
+  <div id="archiMascot" class="archi-mascot">
+    <div class="archi-body">
+      <svg viewBox="0 0 100 100" width="80" height="80">
+        <ellipse cx="50" cy="60" rx="32" ry="30" fill="#1a1a1a"/>
+        <ellipse cx="50" cy="65" rx="14" ry="18" fill="#f0f0f0"/>
+        <ellipse cx="28" cy="40" rx="10" ry="16" fill="#111" transform="rotate(-20 28 40)"/>
+        <ellipse cx="72" cy="40" rx="10" ry="16" fill="#111" transform="rotate(20 72 40)"/>
+        <ellipse cx="55" cy="55" rx="12" ry="9" fill="#e8e8e8"/>
+        <ellipse cx="58" cy="50" rx="4" ry="3" fill="#333"/>
+        <circle cx="40" cy="42" r="5" fill="#fff"/>
+        <circle cx="62" cy="40" r="5" fill="#fff"/>
+        <circle cx="41" cy="43" r="3" fill="#222"/>
+        <circle cx="63" cy="41" r="3" fill="#222"/>
+        <circle cx="42" cy="42" r="1" fill="#fff"/>
+        <circle cx="64" cy="40" r="1" fill="#fff"/>
+      </svg>
+    </div>
+    <div id="archiBubble" class="archi-bubble"></div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toastContainer" class="toast-container"></div>
+
+</section>
+
+<!-- ═══════════ MODALS ═══════════ -->
+
+<!-- Animal detail modal -->
+<div id="animalModal" class="modal hidden">
+  <div class="modal-content animal-modal">
+    <button class="modal-close">✕</button>
+    <div id="animalModalBody"></div>
+  </div>
+</div>
+
+<!-- Visitor matching modal -->
+<div id="visitorModal" class="modal hidden">
+  <div class="modal-content visitor-modal">
+    <button class="modal-close">✕</button>
+    <div id="visitorModalBody"></div>
+  </div>
+</div>
+
+<!-- Day summary modal -->
+<div id="dayEndModal" class="modal hidden">
+  <div class="modal-content day-end-modal">
+    <h2>🌙 סיום יום</h2>
+    <div id="dayEndBody"></div>
+    <button id="nextDayBtn" class="btn-primary">לעבור ליום הבא ☀️</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
