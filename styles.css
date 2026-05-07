@@ -995,3 +995,87 @@ input  { font-family: inherit; }
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ── Bonded pair badge ── */
+.bonded-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: #FFD1DC;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  color: var(--dark);
+}
+
+/* ── Neighbor button pulse ── */
+.neighbor-btn {
+  background: #FFE0B2 !important;
+  animation: pulse 1.5s infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 2px 8px var(--shadow-l); }
+  50% { box-shadow: 0 4px 16px rgba(255, 152, 0, 0.4); }
+}
+
+/* ── Adoption history modal ── */
+.history-modal {
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.history-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--cream);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.history-entry.great { border-right: 4px solid var(--mint-d); }
+.history-entry.good  { border-right: 4px solid var(--sky-d); }
+.history-entry.bad   { border-right: 4px solid #EF9A9A; }
+
+.history-arrow { color: var(--brown); font-size: 16px; }
+.history-meta  { margin-right: auto; font-size: 11px; color: var(--brown); }
+
+/* ── Adopter update modal ── */
+.update-modal { max-width: 400px; }
+
+.update-card {
+  border-radius: 14px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.update-card.good    { background: var(--mint); border: 2px solid var(--mint-d); }
+.update-card.concern { background: #FFF9C4; border: 2px solid #F9A825; }
+
+.update-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.update-avatar { font-size: 24px; }
+.update-message {
+  font-size: 14px;
+  color: var(--dark);
+  font-style: italic;
+  line-height: 1.5;
+}

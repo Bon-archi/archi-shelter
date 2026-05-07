@@ -48,6 +48,7 @@
       <div class="progress-bar"><div class="progress-fill" id="dayProgress"></div></div>
     </div>
     <div class="topbar-actions">
+      <button id="historyBtn" class="icon-btn" title="היסטורית אימוצים">📋</button>
       <button id="speedBtn" class="icon-btn" title="מהירות">🐢</button>
       <button id="pauseBtn" class="icon-btn" title="עצור">⏸️</button>
       <button id="logoutBtn" class="icon-btn" title="התנתק">🚪</button>
@@ -133,6 +134,22 @@
   <div class="modal-content street-modal">
     <button class="modal-close">✕</button>
     <div id="streetModalBody"></div>
+  </div>
+</div>
+
+<!-- Adoption history modal -->
+<div id="historyModal" class="modal hidden">
+  <div class="modal-content history-modal">
+    <button class="modal-close">✕</button>
+    <div id="historyModalBody"></div>
+  </div>
+</div>
+
+<!-- Adopter update modal -->
+<div id="updateModal" class="modal hidden">
+  <div class="modal-content update-modal">
+    <button class="modal-close">✕</button>
+    <div id="updateModalBody"></div>
   </div>
 </div>
 

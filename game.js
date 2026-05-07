@@ -112,6 +112,11 @@ const VISITOR_PROFILES = [
     bio: 'אבא חד-הורי עם ילד קטן. רוצה כלב סבלני שיהיה טוב עם ילדים.',
     species: 'dog', tags: ['good_with_kids','calm','friendly','cuddly'], avoid: ['aggressive','shy'],
     age: ['adult'], experience: 'first_time'
+  },
+  {
+    bio: 'ילד בן 8 שמשכנע את ההורים 🧒 "אני רוצה חיה!" — מחפשים חיה צעירה ושובבה לחבר לילד.',
+    species: 'any', tags: ['good_with_kids','playful','friendly'], avoid: ['shy','independent','aggressive'],
+    age: ['puppy','young'], experience: 'first_time', kidFamily: true
   }
 ];
 
@@ -153,9 +158,13 @@ const game = {
   speed:           1,             // 1 or 2
   nextAnimalId:    1,
   nextVisitorId:   1,
-  dayOps:          { campaign:false, openDay:false },
+  dayOps:          { campaign:false, openDay:false, groupWalk:false, groupPlay:false, newspaper:false },
   campaignActive:  false,
   openDayActive:   false,
+  neighborRequest: null,
+  newspaperActive: false,
+  adoptionHistory: [],
+  pendingUpdates:  [],
 };
 
 let lastTick = 0;
@@ -216,6 +225,8 @@ function saveGame() {
     totalAdoptions: game.totalAdoptions, perfectMatches: game.perfectMatches,
     failedAdoptions: game.failedAdoptions,
     nextAnimalId: game.nextAnimalId,
+    adoptionHistory: game.adoptionHistory,
+    pendingUpdates: game.pendingUpdates,
     savedAt: Date.now()
   };
   localStorage.setItem(saveKey(game.user), JSON.stringify(snap));
@@ -244,14 +255,20 @@ function resetGameState() {
   game.phaseTime = 0;
   game.visitorTimer = 0;
   game.dayStats = { income:0, expenses:0, adoptions:0 };
-  game.dayOps = { campaign:false, openDay:false };
+  game.dayOps = { campaign:false, openDay:false, groupWalk:false, groupPlay:false, newspaper:false };
   game.campaignActive = false;
   game.openDayActive = false;
+  game.neighborRequest = null;
+  game.newspaperActive = false;
+  game.adoptionHistory = [];
+  game.pendingUpdates = [];
   // start with a few animals
   for (let i = 0; i < STARTING_ANIMALS; i++) {
     game.animals.push(generateAnimal());
   }
-  // ARCHI is always there as mascot — bonus animal that's not adoptable would be cool, but skip for now
+  const bondCandidates = game.animals.filter(a => a.species === 'dog');
+  if (bondCandidates.length >= 2) bondAnimals(bondCandidates[0], bondCandidates[1]);
+  else if (game.animals.length >= 2) bondAnimals(game.animals[0], game.animals[1]);
 }
 
 // ────────────── ANIMAL GENERATION ──────────────
@@ -300,6 +317,8 @@ function generateAnimal(opts = {}) {
     isNew: true,
     sick: false,
     arrivalStory: choice(ARRIVAL_STORIES),
+    bonded: false,
+    bondedWith: null,
     todayActions: { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false, photographed:false }
   };
 }
@@ -308,13 +327,16 @@ function generateAnimal(opts = {}) {
 
 function generateVisitor() {
   const profile = choice(VISITOR_PROFILES);
+  const isHighBudget = game.newspaperActive;
+  if (game.newspaperActive) game.newspaperActive = false;
   return {
     id: game.nextVisitorId++,
     name: choice(VISITOR_NAMES),
     avatar: choice(VISITOR_AVATARS),
     profile,
     patience: 100,    // drops over 30s
-    arrivedAt: Date.now()
+    arrivedAt: Date.now(),
+    highBudget: isHighBudget
   };
 }
 
@@ -565,6 +587,203 @@ function generateStreetAnimal() {
   return a;
 }
 
+function bondAnimals(a, b) {
+  a.bonded = true; a.bondedWith = b.id;
+  b.bonded = true; b.bondedWith = a.id;
+}
+
+function runGroupWalk() {
+  const dogs = game.animals.filter(a => a.species === 'dog');
+  if (dogs.length === 0) return showToast('אין כלבים לטיול 🐶', 'warn');
+  if (game.dayOps.groupWalk) return showToast('כבר יצאנו לטיול היום', 'warn');
+  const cost = 15 * dogs.length;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  game.dayOps.groupWalk = true;
+  dogs.forEach(a => {
+    a.stats.happiness = Math.min(100, a.stats.happiness + 8);
+    a.stats.health    = Math.min(100, a.stats.health + 5);
+    a.stats.trust     = Math.min(100, a.stats.trust + 3);
+  });
+  showFloatMoney(-cost);
+  showToast(`${dogs.length} כלבים יצאו לטיול! 🦮`, 'success');
+  showArchi('כולם שמחים בחוץ! 🦮');
+  saveGame(); refreshUI();
+}
+
+function runGroupPlay() {
+  if (game.dayOps.groupPlay) return showToast('כבר שיחקנו ביחד היום', 'warn');
+  if (game.animals.length === 0) return showToast('אין חיות לשחק', 'warn');
+  game.dayOps.groupPlay = true;
+  game.animals.forEach(a => {
+    a.stats.happiness = Math.min(100, a.stats.happiness + 10);
+    a.stats.trust     = Math.min(100, a.stats.trust + 3);
+  });
+  showToast(`כל ${game.animals.length} החיות שיחקו ביחד! 🎮`, 'success');
+  showArchi('כולם משחקים ביחד! 🎮');
+  saveGame(); refreshUI();
+}
+
+function showBondedAdoptionModal(a, b, v) {
+  const mA = calculateMatch(a, v);
+  const mB = calculateMatch(b, v);
+  const avgScore = Math.round((mA.score + mB.score) / 2);
+  let basePrice;
+  if (avgScore >= 80) basePrice = 1400 + rand(0, 600);
+  else if (avgScore >= 60) basePrice = 500 + rand(0, 400);
+  else basePrice = 0;
+  const category = avgScore >= 80 ? 'great' : avgScore >= 60 ? 'good' : 'bad';
+  const body = $('#visitorModalBody');
+  body.innerHTML = `
+    <h2>💞 זוג בלתי נפרד</h2>
+    <div style="text-align:center;color:var(--brown);font-size:13px;margin-bottom:8px;">
+      ${a.name} ו-${b.name} לא נפרדים אחד מהשני
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;margin:8px 0;">
+      <div style="text-align:center">${animalSVG(a)}<div class="animal-name">${a.name}</div></div>
+      <div style="display:flex;align-items:center;font-size:24px">💞</div>
+      <div style="text-align:center">${animalSVG(b)}<div class="animal-name">${b.name}</div></div>
+    </div>
+    <div class="match-result ${category}">התאמה משולבת: ${avgScore}%</div>
+    ${category !== 'bad' ? `<div style="text-align:center;color:var(--brown);font-size:14px;margin:8px 0;">סכום אימוץ לשניהם: <strong>₪${basePrice}</strong></div>` : ''}
+    <div class="confirm-row">
+      <button class="btn-secondary" id="cancelBonded">חזרה</button>
+      <button class="btn-primary" id="confirmBonded">${category === 'bad' ? 'בכל זאת' : 'אמץ את שניהם ❤️'}</button>
+    </div>
+  `;
+  $('#cancelBonded').addEventListener('click', () => openVisitorModal(v.id));
+  $('#confirmBonded').addEventListener('click', () => confirmBondedAdoption(a.id, b.id, v.id, basePrice, category));
+}
+
+function confirmBondedAdoption(aId, bId, vId, price, category) {
+  const a = game.animals.find(x => x.id === aId);
+  const b = game.animals.find(x => x.id === bId);
+  const v = game.visitors.find(x => x.id === vId);
+  if (!v) return;
+  if (category === 'bad') {
+    game.visitors = game.visitors.filter(x => x.id !== vId);
+    game.reputation = Math.max(0, game.reputation - 5);
+    game.failedAdoptions++;
+    showToast('המבקר עזב מאוכזב 😞', 'danger');
+    closeModal('visitorModal'); saveGame(); refreshUI(); return;
+  }
+  game.money += price;
+  game.dayStats.income += price;
+  game.dayStats.adoptions += 2;
+  game.totalAdoptions += 2;
+  game.perfectMatches += category === 'great' ? 1 : 0;
+  game.reputation = Math.min(100, game.reputation + (category === 'great' ? 6 : 3));
+  game.animals = game.animals.filter(x => x.id !== aId && x.id !== bId);
+  game.visitors = game.visitors.filter(x => x.id !== vId);
+  if (a) game.adoptionHistory.push({ animalName: a.name, animalSpecies: a.species, animalBreed: a.breed, visitorName: v.name, visitorAvatar: v.avatar, day: game.day, price: Math.round(price/2), category });
+  if (b) game.adoptionHistory.push({ animalName: b.name, animalSpecies: b.species, animalBreed: b.breed, visitorName: v.name, visitorAvatar: v.avatar, day: game.day, price: Math.round(price/2), category });
+  showFloatMoney(price); showHeart(); showHeart(); showHeart();
+  showToast(`${a?.name} ו-${b?.name} מצאו בית יחד! 💞`, 'success');
+  showArchi(choice(['הזוג הבלתי נפרד מצא משפחה! 💞', 'איזה יפה! שניהם ביחד לבית חדש 💞']));
+  checkLevelUp(); closeModal('visitorModal'); saveGame(); refreshUI();
+}
+
+function runNeighborEvent() {
+  if (!game.neighborRequest) return;
+  const animals = game.neighborRequest.animals;
+  game.neighborRequest = null;
+  showArchi(choice(['המקלט השכן קרא לעזרה! 🆘', 'יש לנו אורחים זמניים...']));
+  showNeighborModal(animals);
+  refreshUI();
+}
+
+function showNeighborModal(animals) {
+  const capacity = shelterCapacity();
+  $('#streetModalBody').innerHTML = `
+    <h2>🚨 המקלט השכן קרא לעזרה!</h2>
+    <div style="text-align:center;color:var(--brown);font-size:13px;margin-bottom:12px;">
+      המקלט בשכונה מלא. האם תקבל את החיות האלה? <strong>חינם</strong>
+    </div>
+    <div class="street-animals-grid">
+      ${animals.map((a, i) => `
+        <div class="street-animal-card" id="neighborCard${i}">
+          ${animalSVG(a)}
+          <div class="animal-name">${a.name}</div>
+          <div class="animal-info" style="font-size:11px">${a.breed} • ${ageLabel(a.age)}</div>
+          <div class="animal-bio" style="font-size:11px;margin:4px 0">${a.arrivalStory}</div>
+          <div class="animal-stats-mini">${miniStat('❤️', a.stats.health)}${miniStat('😊', a.stats.happiness)}</div>
+          <button class="rescue-btn" id="neighborBtn${i}" ${game.animals.length >= capacity ? 'disabled' : ''}>
+            קבל! 🏠
+          </button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  animals.forEach((a, i) => {
+    const btn = $('#neighborBtn' + i);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (game.animals.length >= shelterCapacity()) return showToast('המקלט מלא!', 'warn');
+      game.animals.push(a);
+      btn.disabled = true; btn.textContent = 'התקבל! ✅';
+      const card = $('#neighborCard' + i);
+      if (card) card.classList.add('rescued');
+      showToast(`${a.name} התקבל! 🐾`, 'success'); showHeart();
+      saveGame(); refreshUI();
+    });
+  });
+  openModal('streetModal');
+}
+
+function runNewspaperAd() {
+  if (game.dayOps.newspaper) return;
+  const cost = 150;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  game.dayOps.newspaper = true;
+  game.newspaperActive = true;
+  showFloatMoney(-cost);
+  showToast('📰 המודעה פורסמה! המבקר הבא יגיע עם תקציב גדול', 'success');
+  showArchi('המודעה בעיתון! 📰 יגיע מישהו מיוחד');
+  saveGame(); refreshUI();
+}
+
+function showAdoptionHistory() {
+  const body = $('#historyModalBody');
+  if (game.adoptionHistory.length === 0) {
+    body.innerHTML = '<h2>📋 היסטורית אימוצים</h2><p class="empty-msg" style="margin-top:20px">עדיין לא היו אימוצים 🐾</p>';
+  } else {
+    const entries = [...game.adoptionHistory].reverse();
+    body.innerHTML = `
+      <h2>📋 היסטורית אימוצים (${game.adoptionHistory.length})</h2>
+      <div class="history-list">
+        ${entries.map(e => `
+          <div class="history-entry ${e.category}">
+            <span class="history-animal">${e.animalSpecies==='dog'?'🐶':'🐱'} <strong>${e.animalName}</strong> <span style="font-size:11px;color:var(--brown)">${e.animalBreed}</span></span>
+            <span class="history-arrow">→</span>
+            <span class="history-visitor">${e.visitorAvatar} ${e.visitorName}</span>
+            <span class="history-meta">יום ${e.day} • ₪${e.price}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  openModal('historyModal');
+}
+
+function showAdopterUpdate(u) {
+  $('#updateModalBody').innerHTML = `
+    <h2>${u.isGood ? '💌 עדכון מהמאמץ' : '📬 עדכון מהמאמץ'}</h2>
+    <div class="update-card ${u.isGood ? 'good' : 'concern'}">
+      <div class="update-header">
+        <span class="update-avatar">${u.visitorAvatar}</span>
+        <span class="update-name">${u.visitorName} על ${u.animalName}</span>
+      </div>
+      <div class="update-message">${u.message}</div>
+    </div>
+    <button class="btn-primary" id="closeUpdate" style="width:100%;margin-top:12px">נהדר! 🐾</button>
+  `;
+  $('#closeUpdate').addEventListener('click', () => closeModal('updateModal'));
+  openModal('updateModal');
+}
+
 function showStreetSearchModal(found) {
   const capacity = shelterCapacity();
   const current  = game.animals.length;
@@ -638,6 +857,10 @@ function renderDailyOps() {
   if (!bar) return;
   const shelterFull = game.animals.length >= shelterCapacity();
   const isDay = game.dayPhase === 'day';
+  const dogs = game.animals.filter(a => a.species === 'dog');
+  const walkCost = 15 * dogs.length;
+  const walkDisabled = game.dayOps.groupWalk || dogs.length === 0 || game.money < walkCost;
+  const playDisabled = game.dayOps.groupPlay || game.animals.length === 0;
   bar.innerHTML = `
     <button class="ops-btn ${game.dayOps.campaign ? 'active' : ''}" id="opsCampaign"
       ${game.dayOps.campaign || game.money < 200 ? 'disabled' : ''}>
@@ -655,10 +878,34 @@ function renderDailyOps() {
       🔍 חיפוש ברחוב
       <span class="ops-cost">₪100</span>
     </button>
+    <button class="ops-btn ${game.dayOps.groupWalk ? 'active' : ''}" id="opsGroupWalk"
+      ${walkDisabled ? 'disabled' : ''}>
+      🦮 טיול כלבים
+      <span class="ops-cost">${game.dayOps.groupWalk ? '✓ בוצע' : '₪' + walkCost}</span>
+    </button>
+    <button class="ops-btn ${game.dayOps.groupPlay ? 'active' : ''}" id="opsGroupPlay"
+      ${playDisabled ? 'disabled' : ''}>
+      🎮 שחק ביחד
+      <span class="ops-cost">${game.dayOps.groupPlay ? '✓ בוצע' : 'חינם'}</span>
+    </button>
+    <button class="ops-btn ${game.dayOps.newspaper ? 'active' : ''}" id="opsNewspaper"
+      ${game.dayOps.newspaper || game.money < 150 ? 'disabled' : ''}>
+      📰 מודעה בעיתון
+      <span class="ops-cost">${game.dayOps.newspaper ? '✓ פעיל' : '₪150'}</span>
+    </button>
+    ${game.neighborRequest ? `
+      <button class="ops-btn neighbor-btn" id="opsNeighbor">
+        🚨 מקלט שכן <span class="ops-cost">${game.neighborRequest.animals.length} חיות חינם</span>
+      </button>
+    ` : ''}
   `;
   bar.querySelector('#opsCampaign').addEventListener('click', runAdCampaign);
   bar.querySelector('#opsOpenDay').addEventListener('click', runOpenDay);
   bar.querySelector('#opsStreetSearch').addEventListener('click', runStreetSearch);
+  bar.querySelector('#opsGroupWalk').addEventListener('click', runGroupWalk);
+  bar.querySelector('#opsGroupPlay').addEventListener('click', runGroupPlay);
+  bar.querySelector('#opsNewspaper').addEventListener('click', runNewspaperAd);
+  bar.querySelector('#opsNeighbor')?.addEventListener('click', runNeighborEvent);
 }
 
 // ────────────── ADOPTION ──────────────
@@ -667,6 +914,13 @@ function attemptAdoption(animalId, visitorId) {
   const a = game.animals.find(x => x.id === animalId);
   const v = game.visitors.find(x => x.id === visitorId);
   if (!a || !v) return;
+
+  if (a.bonded) {
+    const partner = game.animals.find(x => x.id === a.bondedWith);
+    if (partner) { showBondedAdoptionModal(a, partner, v); return; }
+    else { a.bonded = false; a.bondedWith = null; } // partner gone, break bond
+  }
+
   const m = calculateMatch(a, v);
 
   // Calculate price based on match
@@ -698,6 +952,10 @@ function confirmAdoption(animalId, visitorId, price, category) {
     return;
   }
 
+  // Apply price bonuses
+  if (v.profile.kidFamily && category !== 'bad') price = Math.floor(price * 1.2);
+  if (v.highBudget && category !== 'bad') price = Math.floor(price * 1.5);
+
   // Successful adoption
   game.money += price;
   game.dayStats.income += price;
@@ -719,6 +977,31 @@ function confirmAdoption(animalId, visitorId, price, category) {
   showHeart();
   showToast(`${a.name} מצא בית! +₪${price}`, 'success');
   showArchi(choice(ARCHI_MESSAGES.great_match));
+
+  game.adoptionHistory.push({
+    animalName: a.name, animalSpecies: a.species, animalBreed: a.breed, animalAge: a.age,
+    visitorName: v.name, visitorAvatar: v.avatar,
+    day: game.day, price, category
+  });
+
+  if (category !== 'bad' && Math.random() < 0.4) {
+    const isGood = Math.random() < 0.8;
+    const goodMsgs = [
+      `"${a.name} כבר החבר הכי טוב שלנו! תודה מהלב 💕"`,
+      `"${a.name} ישן במיטה איתנו... לא חשבנו שיסתגל כל כך מהר! ❤️"`,
+      `"${a.name} מאושר כאן! מומלץ בחום 🌟"`,
+    ];
+    const badMsgs = [
+      `"${a.name} קצת מתקשה להסתגל, אבל לא מוותרים 🤞"`,
+      `"יש כמה אתגרים עם ${a.name}... ניצור קשר אם צריך"`,
+    ];
+    const msgs = isGood ? goodMsgs : badMsgs;
+    game.pendingUpdates.push({
+      animalName: a.name, visitorName: v.name, visitorAvatar: v.avatar,
+      message: choice(msgs), isGood,
+      triggerDay: game.day + rand(2, 4)
+    });
+  }
 
   checkLevelUp();
   closeModal('visitorModal');
@@ -809,7 +1092,7 @@ function startMorning() {
   game.dayStats = { income:0, expenses:0, adoptions:0 };
   game.visitors = [];
   game.visitorTimer = 0;
-  game.dayOps = { campaign:false, openDay:false };
+  game.dayOps = { campaign:false, openDay:false, groupWalk:false, groupPlay:false, newspaper:false };
   game.campaignActive = false;
   game.openDayActive = false;
 
@@ -826,6 +1109,10 @@ function startMorning() {
       game.animals.push(generateAnimal());
     }
   }
+  const newAnimals = game.animals.slice(-incoming);
+  if (newAnimals.length >= 2 && Math.random() < 0.4) {
+    bondAnimals(newAnimals[newAnimals.length - 2], newAnimals[newAnimals.length - 1]);
+  }
 
   // Daily decay
   for (const a of game.animals) {
@@ -838,8 +1125,20 @@ function startMorning() {
     if (a.daysInShelter > 1) a.isNew = false;
   }
 
+  // Neighbor shelter request
+  game.neighborRequest = null;
+  if (Math.random() < 0.3 && shelterCapacity() - game.animals.length >= 2) {
+    const count = rand(2, 3);
+    game.neighborRequest = { animals: Array.from({length: count}, () => generateStreetAnimal()) };
+  }
+
   // ARCHI greeting
   showArchi(choice(game.animals.length === 0 ? ARCHI_MESSAGES.morning_no_animals : ARCHI_MESSAGES.morning_general));
+
+  // Due adopter updates
+  const dueUpdates = game.pendingUpdates.filter(u => u.triggerDay <= game.day);
+  game.pendingUpdates = game.pendingUpdates.filter(u => u.triggerDay > game.day);
+  dueUpdates.forEach((u, i) => setTimeout(() => showAdopterUpdate(u), 5000 + i * 4000));
 }
 
 function startDayPhase() {
@@ -936,6 +1235,7 @@ function renderAnimals() {
   grid.innerHTML = game.animals.map(a => `
     <div class="animal-card" data-id="${a.id}">
       ${a.isNew ? '<span class="new-badge">חדש!</span>' : ''}
+      ${a.bonded ? '<span class="bonded-badge">💞 זוג</span>' : ''}
       <span class="species-badge">${a.species==='dog'?'🐶':'🐱'}</span>
       ${animalSVG(a)}
       <div class="animal-name">${a.name}</div>
@@ -1029,6 +1329,7 @@ function renderVisitors() {
           ${p.species !== 'any' ? `<span class="tag">${p.species==='dog'?'🐶 כלב':'🐱 חתול'}</span>` : '<span class="tag">🐾 גמיש</span>'}
           ${p.experience === 'first_time' ? '<span class="tag">🌱 פעם ראשונה</span>' : ''}
           ${p.special ? '<span class="tag">💝 לב גדול</span>' : ''}
+          ${p.kidFamily ? '<span class="tag">🧒 ילד משכנע</span>' : ''}
         </div>
         <div class="visitor-patience"><div class="patience-fill ${patClass}" style="width:${v.patience}%"></div></div>
       </div>
@@ -1057,6 +1358,7 @@ function openAnimalModal(id) {
     <div class="tags-row">
       ${a.personality.map(p => `<span class="tag">${personalityLabel(p)}</span>`).join('')}
       ${a.sick ? '<span class="tag" style="background:#FFCDD2">🤒 חולה</span>' : ''}
+      ${a.bonded ? `<span class="tag" style="background:#FFD1DC">💞 זוג בלתי נפרד</span>` : ''}
     </div>
     <div class="action-row">
       <button class="action-btn" data-act="feed" ${a.todayActions.fed ? 'disabled' : ''}>
@@ -1131,6 +1433,7 @@ function openVisitorModal(visitorId) {
         ${p.species !== 'any' ? `<span class="tag">${p.species==='dog'?'🐶 רוצה כלב':'🐱 רוצה חתול'}</span>` : '<span class="tag">🐾 גמיש</span>'}
         ${p.tags.map(t => `<span class="tag">${tagLabel(t)}</span>`).join('')}
         ${p.experience === 'first_time' ? '<span class="tag">🌱 ראשון</span>' : '<span class="tag">⭐ מנוסה</span>'}
+        ${p.kidFamily ? '<span class="tag">🧒 ילד משכנע</span>' : ''}
       </div>
     </div>
     <div class="match-instruction">בחר חיה שתתאים ל${v.name} 🐾</div>
@@ -1282,6 +1585,7 @@ function setupGameControls() {
     $('#speedBtn').textContent = game.speed === 2 ? '🐇' : '🐢';
   });
   $('#nextDayBtn').addEventListener('click', nextDay);
+  $('#historyBtn').addEventListener('click', showAdoptionHistory);
   $$('.modal-close').forEach(btn => {
     btn.addEventListener('click', () => btn.closest('.modal').classList.add('hidden'));
   });
@@ -1301,9 +1605,13 @@ function enterGame(username) {
     game.dayStats = { income:0, expenses:0, adoptions:0 };
     game.paused = false;
     game.speed = 1;
-    game.dayOps = game.dayOps || { campaign:false, openDay:false };
+    game.dayOps = game.dayOps || { campaign:false, openDay:false, groupWalk:false, groupPlay:false, newspaper:false };
     game.campaignActive = false;
     game.openDayActive = false;
+    game.neighborRequest = null;
+    game.newspaperActive = false;
+    game.adoptionHistory = game.adoptionHistory || [];
+    game.pendingUpdates = game.pendingUpdates || [];
     showToast(`ברוך השוב, ${username}!`, 'success');
   } else {
     resetGameState();
