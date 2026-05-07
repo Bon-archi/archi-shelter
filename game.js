@@ -291,7 +291,7 @@ function generateAnimal(opts = {}) {
     isNew: true,
     sick: false,
     arrivalStory: choice(ARRIVAL_STORIES),
-    todayActions: { fed:false, played:false, trained:false, vet:false }
+    todayActions: { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false }
   };
 }
 
@@ -347,6 +347,9 @@ function calculateMatch(animal, visitor) {
     score -= 25; reasons.push('חיה חולה');
   }
 
+  // Groomed animals present better
+  if (animal.compatTags.includes('groomed')) score += 6;
+
   // Happiness affects how the animal "presents"
   if (animal.stats.happiness < 30) score -= 10;
   if (animal.stats.happiness > 80) score += 5;
@@ -398,6 +401,47 @@ function trainAnimal(a) {
   a.stats.training = Math.min(100, a.stats.training + 10);
   a.stats.trust    = Math.min(100, a.stats.trust + 3);
   showFloatMoney(-cost);
+  saveGame();
+  refreshUI();
+}
+
+function groomAnimal(a) {
+  if (a.todayActions.groomed) return showToast('כבר טיפחת היום', 'warn');
+  a.todayActions.groomed = true;
+  a.stats.happiness = Math.min(100, a.stats.happiness + 12);
+  a.stats.trust     = Math.min(100, a.stats.trust + 5);
+  if (!a.compatTags.includes('groomed')) a.compatTags.push('groomed');
+  showHeart();
+  showToast(`${a.name} נראה מדהים! ✨`, 'success');
+  saveGame();
+  refreshUI();
+}
+
+function walkAnimal(a) {
+  if (a.todayActions.walked) return showToast('כבר יצאתם לטיול היום', 'warn');
+  a.todayActions.walked = true;
+  a.stats.happiness = Math.min(100, a.stats.happiness + 10);
+  a.stats.health    = Math.min(100, a.stats.health + 3);
+  a.stats.trust     = Math.min(100, a.stats.trust + 4);
+  a.stats.energy    = Math.min(100, a.stats.energy + 5);
+  showHeart();
+  showToast(`${a.name} נהנה מהטיול! 🌳`, 'success');
+  saveGame();
+  refreshUI();
+}
+
+function advertiseAnimal(a) {
+  if (a.todayActions.advertised) return showToast('כבר פרסמת היום', 'warn');
+  const cost = 50;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  a.todayActions.advertised = true;
+  // Spawn a visitor soon
+  game.visitorTimer = Math.max(game.visitorTimer, visitorSpawnInterval() * 0.85);
+  game.reputation = Math.min(100, game.reputation + 1);
+  showFloatMoney(-cost);
+  showToast(`${a.name} פורסם ברשתות! 📸`, 'success');
   saveGame();
   refreshUI();
 }
@@ -564,7 +608,7 @@ function startMorning() {
 
   // Reset daily flags
   for (const a of game.animals) {
-    a.todayActions = { fed:false, played:false, trained:false, vet:false };
+    a.todayActions = { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false };
     a.daysInShelter++;
   }
 
@@ -814,6 +858,15 @@ function openAnimalModal(id) {
       <button class="action-btn" data-act="train" ${a.todayActions.trained ? 'disabled' : ''}>
         🎓 אילוף <span class="cost">₪30</span>
       </button>
+      <button class="action-btn" data-act="groom" ${a.todayActions.groomed ? 'disabled' : ''}>
+        ✂️ טיפוח <span class="cost">חינם</span>
+      </button>
+      <button class="action-btn" data-act="walk" ${a.todayActions.walked ? 'disabled' : ''}>
+        🌳 טיול <span class="cost">חינם</span>
+      </button>
+      <button class="action-btn" data-act="advertise" ${a.todayActions.advertised ? 'disabled' : ''}>
+        📸 פרסום <span class="cost">₪50</span>
+      </button>
       <button class="action-btn" data-act="vet" ${a.todayActions.vet ? 'disabled' : ''} style="grid-column: span 3;">
         🏥 וטרינר <span class="cost">₪${game.upgrades.vetClinic ? 100 : 200}</span>
       </button>
@@ -822,10 +875,13 @@ function openAnimalModal(id) {
   body.querySelectorAll('.action-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const act = btn.dataset.act;
-      if (act === 'feed')  feedAnimal(a);
-      if (act === 'play')  playWithAnimal(a);
-      if (act === 'train') trainAnimal(a);
-      if (act === 'vet')   vetAnimal(a);
+      if (act === 'feed')      feedAnimal(a);
+      if (act === 'play')      playWithAnimal(a);
+      if (act === 'train')     trainAnimal(a);
+      if (act === 'vet')       vetAnimal(a);
+      if (act === 'groom')     groomAnimal(a);
+      if (act === 'walk')      walkAnimal(a);
+      if (act === 'advertise') advertiseAnimal(a);
       openAnimalModal(a.id); // refresh
     });
   });
@@ -843,7 +899,8 @@ function personalityLabel(p) {
   return {
     friendly:'ידידותי',shy:'ביישן',playful:'שובב',lazy:'עצלן',
     cuddly:'מתחבק',independent:'עצמאי',protective:'מגן',curious:'סקרן',
-    calm:'רגוע',energetic:'אנרגטי',aggressive:'אגרסיבי'
+    calm:'רגוע',energetic:'אנרגטי',aggressive:'אגרסיבי',
+    groomed:'מטופח ✨'
   }[p] || p;
 }
 
@@ -890,7 +947,8 @@ function tagLabel(t) {
     quiet:'שקט', calm:'רגוע',
     friendly:'ידידותי', cuddly:'מתחבק', shy:'ביישן',
     playful:'שובב', energetic:'אנרגטי', lazy:'נינוח',
-    independent:'עצמאי', protective:'מגן', curious:'סקרן'
+    independent:'עצמאי', protective:'מגן', curious:'סקרן',
+    groomed:'מטופח ✨'
   }[t] || t;
 }
 
