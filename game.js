@@ -125,7 +125,10 @@ const ARCHI_MESSAGES = {
   low_money:          ['הכסף נגמר... תזהר 💸','צריך להרוויח יותר','אולי לעצור עם הקניות?'],
   animal_sick:        ['חיה לא מרגישה טוב 🤒','מישהו צריך וטרינר','שים לב לבריאות שלהם'],
   evening:            ['יום מוצלח!','עוד יום עבר, מתקדמים 🌙','בוא נסכם'],
-  empty:              ['הכל בסדר 🐾']
+  empty:              ['הכל בסדר 🐾'],
+  street_search:      ['יצאנו לחפש! 🔍','מחפשים בשכונה...','תמיד אפשר למצוא מישהו צריך בית 🐾'],
+  campaign_start:     ['קמפיין פרסום! 📢 יגיעו יותר מבקרים','הרשתות מדברות על המקלט שלנו!'],
+  open_day:           ['יום אימוץ פתוח! 🎉 בואו כולם','היום אנחנו פתוחים לכולם!'],
 };
 
 // ────────────── STATE ──────────────
@@ -150,6 +153,9 @@ const game = {
   speed:           1,             // 1 or 2
   nextAnimalId:    1,
   nextVisitorId:   1,
+  dayOps:          { campaign:false, openDay:false },
+  campaignActive:  false,
+  openDayActive:   false,
 };
 
 let lastTick = 0;
@@ -238,6 +244,9 @@ function resetGameState() {
   game.phaseTime = 0;
   game.visitorTimer = 0;
   game.dayStats = { income:0, expenses:0, adoptions:0 };
+  game.dayOps = { campaign:false, openDay:false };
+  game.campaignActive = false;
+  game.openDayActive = false;
   // start with a few animals
   for (let i = 0; i < STARTING_ANIMALS; i++) {
     game.animals.push(generateAnimal());
@@ -291,7 +300,7 @@ function generateAnimal(opts = {}) {
     isNew: true,
     sick: false,
     arrivalStory: choice(ARRIVAL_STORIES),
-    todayActions: { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false }
+    todayActions: { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false, photographed:false }
   };
 }
 
@@ -446,6 +455,43 @@ function advertiseAnimal(a) {
   refreshUI();
 }
 
+function generateTargetedVisitor(animal) {
+  return {
+    id: game.nextVisitorId++,
+    name: choice(VISITOR_NAMES),
+    avatar: choice(VISITOR_AVATARS),
+    profile: {
+      species: animal.species,
+      tags: [...animal.personality.slice(0, 2), ...animal.compatTags.filter(t => t !== 'groomed').slice(0, 2)],
+      avoid: [],
+      age: [animal.age],
+      experience: 'experienced',
+      bio: 'ראה את ' + animal.name + ' ברשתות וחייב להכיר! מחפש בדיוק ' + (animal.species === 'dog' ? 'כלב' : 'חתול') + ' כזה.',
+    },
+    patience: 130,
+    arrivedAt: Date.now()
+  };
+}
+
+function photographAnimal(a) {
+  if (a.todayActions.photographed) return showToast('כבר צולם היום', 'warn');
+  const cost = 80;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  if (game.dayPhase !== 'day') return showToast('צילום זמין רק ביום', 'warn');
+  if (game.visitors.length >= effectiveMaxVisitors()) return showToast('המקלט מלא במבקרים', 'warn');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  a.todayActions.photographed = true;
+  const targeted = generateTargetedVisitor(a);
+  game.visitors.push(targeted);
+  showFloatMoney(-cost);
+  showHeart();
+  showToast(`${a.name} צולם! מבקר מיוחד בדרך 📸`, 'success');
+  saveGame();
+  refreshUI();
+  openAnimalModal(a.id);
+}
+
 function vetAnimal(a) {
   if (a.todayActions.vet) return showToast('כבר טופל היום', 'warn');
   const cost = game.upgrades.vetClinic ? 100 : 200;
@@ -459,6 +505,160 @@ function vetAnimal(a) {
   showToast(`${a.name} מטופל ובריא!`, 'success');
   saveGame();
   refreshUI();
+}
+
+// ────────────── DAILY OPS ──────────────
+
+function runAdCampaign() {
+  const cost = 200;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  if (game.dayOps.campaign) return showToast('קמפיין כבר פעיל היום', 'warn');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  game.dayOps.campaign = true;
+  game.campaignActive = true;
+  game.reputation = Math.min(100, game.reputation + 10);
+  showFloatMoney(-cost);
+  showToast('📢 קמפיין פעיל! מבקרים מגיעים מהר יותר', 'success');
+  showArchi(choice(ARCHI_MESSAGES.campaign_start));
+  saveGame();
+  refreshUI();
+}
+
+function runOpenDay() {
+  const cost = 400;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  if (game.dayOps.openDay) return showToast('יום פתוח כבר פעיל היום', 'warn');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  game.dayOps.openDay = true;
+  game.openDayActive = true;
+  // Spawn 2 visitors immediately
+  if (game.animals.length > 0) {
+    for (let i = 0; i < 2; i++) {
+      if (game.visitors.length < effectiveMaxVisitors()) {
+        game.visitors.push(generateVisitor());
+      }
+    }
+  }
+  showFloatMoney(-cost);
+  showToast('🎉 יום אימוץ פתוח! מקום ל-6 מבקרים', 'success');
+  showArchi(choice(ARCHI_MESSAGES.open_day));
+  saveGame();
+  refreshUI();
+}
+
+function generateStreetAnimal() {
+  const a = generateAnimal();
+  a.stats.health    = rand(30, 60);
+  a.stats.trust     = rand(5, 25);
+  a.stats.happiness = rand(20, 50);
+  const STREET_STORIES = [
+    'נמצא ליד פח זבל בגשם, רועד ומפחד',
+    'שוטט ברחוב שבועות, לבד ורעב',
+    'נמצא ישן מתחת למכונית, ללא צווארון',
+    'מישהו השאיר אותו קשור לעמוד, חיכה שעות',
+    'נמצא פצוע ליד כביש, קיבל עזרה ראשונה'
+  ];
+  a.arrivalStory = choice(STREET_STORIES);
+  a.isStreet = true;
+  return a;
+}
+
+function showStreetSearchModal(found) {
+  const capacity = shelterCapacity();
+  const current  = game.animals.length;
+  const body = $('#streetModalBody');
+  body.innerHTML = `
+    <h2>🔍 חיפוש ברחוב</h2>
+    <div style="text-align:center; color:var(--brown); font-size:13px; margin-bottom:8px;">
+      נמצאו ${found.length} חיות • קיבולת: ${current}/${capacity}
+    </div>
+    <div class="street-animals-grid" id="streetAnimalsGrid">
+      ${found.map((a, idx) => `
+        <div class="street-animal-card" id="streetCard${idx}">
+          ${animalSVG(a)}
+          <div class="animal-name">${a.name}</div>
+          <div class="animal-info">${a.breed} • ${ageLabel(a.age)}</div>
+          <div class="animal-bio" style="font-size:11px; margin:4px 0;">${a.arrivalStory}</div>
+          <div class="animal-stats-mini">
+            ${miniStat('❤️', a.stats.health)}
+            ${miniStat('😊', a.stats.happiness)}
+          </div>
+          <button class="rescue-btn" id="rescueBtn${idx}" ${current >= capacity ? 'disabled' : ''}>
+            ${current >= capacity ? 'מלא 🏠' : 'הצל! 🏠'}
+          </button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  found.forEach((a, idx) => {
+    const btn = body.querySelector(`#rescueBtn${idx}`);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (game.animals.length >= shelterCapacity()) {
+        showToast('המקלט מלא!', 'danger');
+        return;
+      }
+      game.animals.push(a);
+      btn.disabled = true;
+      btn.textContent = 'הוצל! ✅';
+      const card = body.querySelector(`#streetCard${idx}`);
+      if (card) card.classList.add('rescued');
+      showToast(`${a.name} הוצל! ❤️`, 'success');
+      showHeart();
+      saveGame();
+      refreshUI();
+    });
+  });
+  openModal('streetModal');
+}
+
+function runStreetSearch() {
+  if (game.dayPhase !== 'day') return showToast('חיפוש ברחוב זמין רק ביום', 'warn');
+  const cost = 100;
+  if (game.money < cost) return showToast('אין מספיק כסף', 'danger');
+  if (game.animals.length >= shelterCapacity()) return showToast('המקלט מלא!', 'danger');
+  game.money -= cost;
+  game.dayStats.expenses += cost;
+  showFloatMoney(-cost);
+  showArchi(choice(ARCHI_MESSAGES.street_search));
+  const count = rand(1, 3);
+  const found = [];
+  for (let i = 0; i < count; i++) found.push(generateStreetAnimal());
+  saveGame();
+  refreshUI();
+  showStreetSearchModal(found);
+}
+
+// ────────────── DAILY OPS BAR UI ──────────────
+
+function renderDailyOps() {
+  const bar = $('#dailyOpsBar');
+  if (!bar) return;
+  const shelterFull = game.animals.length >= shelterCapacity();
+  const isDay = game.dayPhase === 'day';
+  bar.innerHTML = `
+    <button class="ops-btn ${game.dayOps.campaign ? 'active' : ''}" id="opsCampaign"
+      ${game.dayOps.campaign || game.money < 200 ? 'disabled' : ''}>
+      📢 קמפיין פרסום
+      <span class="ops-cost">${game.dayOps.campaign ? '✓ פעיל' : '₪200'}</span>
+    </button>
+    <button class="ops-btn ${game.dayOps.openDay ? 'active' : ''}" id="opsOpenDay"
+      ${game.dayOps.openDay || game.money < 400 ? 'disabled' : ''}>
+      🎉 יום אימוץ פתוח
+      <span class="ops-cost">${game.dayOps.openDay ? '✓ פעיל' : '₪400'}</span>
+    </button>
+    <button class="ops-btn" id="opsStreetSearch"
+      ${!isDay || game.money < 100 || shelterFull ? 'disabled' : ''}
+      title="${!isDay ? 'זמין רק ביום' : shelterFull ? 'המקלט מלא' : 'חפש חיות ברחוב'}">
+      🔍 חיפוש ברחוב
+      <span class="ops-cost">₪100</span>
+    </button>
+  `;
+  bar.querySelector('#opsCampaign').addEventListener('click', runAdCampaign);
+  bar.querySelector('#opsOpenDay').addEventListener('click', runOpenDay);
+  bar.querySelector('#opsStreetSearch').addEventListener('click', runStreetSearch);
 }
 
 // ────────────── ADOPTION ──────────────
@@ -563,7 +763,7 @@ function tick(now) {
     if (game.phaseTime >= PHASE_MORNING_MS) startDayPhase();
   } else if (game.dayPhase === 'day') {
     game.visitorTimer += delta;
-    if (game.visitorTimer >= visitorSpawnInterval() && game.visitors.length < MAX_VISITORS) {
+    if (game.visitorTimer >= visitorSpawnInterval() && game.visitors.length < effectiveMaxVisitors()) {
       spawnVisitor();
       game.visitorTimer = 0;
     }
@@ -596,7 +796,11 @@ function tick(now) {
 
 function visitorSpawnInterval() {
   const repFactor = 0.8 + (game.reputation / 200);  // 0.8 - 1.3
-  return VISITOR_INTERVAL / repFactor;
+  return (VISITOR_INTERVAL / repFactor) * (game.campaignActive ? 0.5 : 1);
+}
+
+function effectiveMaxVisitors() {
+  return MAX_VISITORS + (game.openDayActive ? 2 : 0);
 }
 
 function startMorning() {
@@ -605,10 +809,13 @@ function startMorning() {
   game.dayStats = { income:0, expenses:0, adoptions:0 };
   game.visitors = [];
   game.visitorTimer = 0;
+  game.dayOps = { campaign:false, openDay:false };
+  game.campaignActive = false;
+  game.openDayActive = false;
 
   // Reset daily flags
   for (const a of game.animals) {
-    a.todayActions = { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false };
+    a.todayActions = { fed:false, played:false, trained:false, vet:false, groomed:false, walked:false, advertised:false, photographed:false };
     a.daysInShelter++;
   }
 
@@ -639,11 +846,13 @@ function startDayPhase() {
   game.dayPhase = 'day';
   // First visitor often arrives quickly
   game.visitorTimer = visitorSpawnInterval() * 0.5;
+  renderDailyOps();
 }
 
 function endDayPhase() {
   game.dayPhase = 'evening';
   game.visitors = [];
+  renderDailyOps();
 
   // Daily expenses
   let foodCost = 0;
@@ -708,6 +917,7 @@ function refreshUI() {
 
   renderAnimals();
   renderVisitors();
+  renderDailyOps();
 }
 
 function updateProgress() {
@@ -867,7 +1077,10 @@ function openAnimalModal(id) {
       <button class="action-btn" data-act="advertise" ${a.todayActions.advertised ? 'disabled' : ''}>
         📸 פרסום <span class="cost">₪50</span>
       </button>
-      <button class="action-btn" data-act="vet" ${a.todayActions.vet ? 'disabled' : ''} style="grid-column: span 3;">
+      <button class="action-btn" data-act="photograph" ${a.todayActions.photographed ? 'disabled' : ''}>
+        📸 צילום <span class="cost">₪80</span>
+      </button>
+      <button class="action-btn" data-act="vet" ${a.todayActions.vet ? 'disabled' : ''} style="grid-column: span 2;">
         🏥 וטרינר <span class="cost">₪${game.upgrades.vetClinic ? 100 : 200}</span>
       </button>
     </div>
@@ -875,14 +1088,15 @@ function openAnimalModal(id) {
   body.querySelectorAll('.action-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const act = btn.dataset.act;
-      if (act === 'feed')      feedAnimal(a);
-      if (act === 'play')      playWithAnimal(a);
-      if (act === 'train')     trainAnimal(a);
-      if (act === 'vet')       vetAnimal(a);
-      if (act === 'groom')     groomAnimal(a);
-      if (act === 'walk')      walkAnimal(a);
-      if (act === 'advertise') advertiseAnimal(a);
-      openAnimalModal(a.id); // refresh
+      if (act === 'feed')        feedAnimal(a);
+      if (act === 'play')        playWithAnimal(a);
+      if (act === 'train')       trainAnimal(a);
+      if (act === 'vet')         vetAnimal(a);
+      if (act === 'groom')       groomAnimal(a);
+      if (act === 'walk')        walkAnimal(a);
+      if (act === 'advertise')   advertiseAnimal(a);
+      if (act === 'photograph')  photographAnimal(a);
+      else if (act !== 'photograph') openAnimalModal(a.id); // refresh
     });
   });
   openModal('animalModal');
@@ -1087,6 +1301,9 @@ function enterGame(username) {
     game.dayStats = { income:0, expenses:0, adoptions:0 };
     game.paused = false;
     game.speed = 1;
+    game.dayOps = game.dayOps || { campaign:false, openDay:false };
+    game.campaignActive = false;
+    game.openDayActive = false;
     showToast(`ברוך השוב, ${username}!`, 'success');
   } else {
     resetGameState();

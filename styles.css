@@ -888,3 +888,110 @@ input  { font-family: inherit; }
   20%  { opacity: 1; }
   to   { transform: translateY(-80px) scale(1.2); opacity: 0; }
 }
+
+/* ── Daily ops bar ── */
+.daily-ops-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.7);
+  border-bottom: 1px solid rgba(141,110,99,0.1);
+  flex-wrap: wrap;
+}
+
+.ops-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: white;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dark);
+  box-shadow: 0 2px 8px var(--shadow-l);
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.ops-btn:hover:not(:disabled) {
+  background: var(--mint);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--shadow);
+}
+
+.ops-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ops-btn.active {
+  background: var(--mint);
+  border-color: var(--mint-d);
+}
+
+.ops-cost {
+  font-size: 11px;
+  color: var(--brown);
+  background: var(--cream);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* ── Street search modal ── */
+.street-modal {
+  max-width: 560px;
+}
+
+.street-animals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.street-animal-card {
+  background: var(--cream);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.street-animal-card.rescued {
+  opacity: 0.45;
+  border-color: var(--mint-d);
+  background: var(--mint);
+}
+
+.rescue-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  border-radius: 10px;
+  background: var(--mint-d);
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.rescue-btn:hover:not(:disabled) {
+  background: var(--dark);
+  transform: translateY(-1px);
+}
+
+.rescue-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
